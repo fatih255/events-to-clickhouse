@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Start ClickHouse, ElasticMQ and Postgres
+        run: docker compose up -d --wait clickhouse elasticmq postgres
+      - run: npm run test:integration
+
+      - name: Start the whole stack and send demo traffic
+        run: |
+          docker compose up -d --build
+          docker compose wait demo-traffic
+      - name: Wait for the writer to drain the queue
+        run: |
+          for i in $(seq 1 60); do
+            n=$(curl -s -u etc:etc_local_only "http://localhost:18123/?query=SELECT%20count()%20FROM%20analytics.events" || echo 0)
+            echo "rows in analytics.events: $n"
+            [ "$n" = "150000" ] && exit 0
+            sleep 2
+          done
+          docker compose logs writer | tail -50
+          exit 1
+      - run: npm run check:read-paths
+      - run: curl -sf http://localhost:18121/ | grep -q "Read paths agree"
+      - if: failure()
+        run: docker compose logs --tail 100
