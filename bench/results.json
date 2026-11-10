@@ -1,0 +1,135 @@
+{
+  "measured_at": "2026-11-10T12:15:36.201Z",
+  "note": "Local benchmark on synthetic data. Both databases run in Docker on the same machine.",
+  "machine": {
+    "cpu": "Intel(R) Core(TM) i7-14700KF",
+    "logical_cores": 28,
+    "ram_gb": 32,
+    "os": "Windows_NT 10.0.26200",
+    "docker": "28 CPUs, 15.5 GiB memory"
+  },
+  "versions": {
+    "clickhouse": "25.8.33.6",
+    "postgres": "17.6"
+  },
+  "dataset": {
+    "rows": 10000000,
+    "seed": 42,
+    "sites": 20,
+    "campaigns": 200,
+    "days": 92
+  },
+  "runs_per_query": 7,
+  "load": {
+    "clickhouse_insert_ms": 31086.9412,
+    "clickhouse_optimize_ms": 1941.2992999999951,
+    "postgres_copy_ms": 25181.7992,
+    "postgres_index_ms": 20289.605699999993,
+    "postgres_rollup_ms": 1762.6993999999977
+  },
+  "storage": {
+    "clickhouse_events_bytes": 295071327,
+    "clickhouse_rollup_bytes": 220337,
+    "postgres_events_bytes": 1700667392,
+    "postgres_rollup_bytes": 2179072,
+    "rollup_rows": 18400
+  },
+  "queries": [
+    {
+      "id": "dashboard",
+      "title": "Daily metrics per campaign, one site, 30 days",
+      "rows_returned": 300,
+      "timings": {
+        "ch_raw": {
+          "median_ms": 6.819600000002538,
+          "min_ms": 6.329900000011548
+        },
+        "ch_mv": {
+          "median_ms": 4.064899999997579,
+          "min_ms": 3.8018000000010943
+        },
+        "pg_raw": {
+          "median_ms": 128.8121000000101,
+          "min_ms": 125.52079999999842
+        },
+        "pg_mv": {
+          "median_ms": 1.3381999999983236,
+          "min_ms": 1.1634999999951106
+        }
+      },
+      "sql": {
+        "ch_raw": "SELECT toString(toDate(ts)) AS date, campaign_id,\n      countIf(event_type = 'impression') AS impressions,\n      countIf(event_type = 'click') AS clicks,\n      countIf(event_type = 'submit') AS submits,\n      countIf(event_type = 'close') AS closes\n    FROM bench.events FINAL\n    WHERE site_id = 7 AND ts >= '2026-09-01 00:00:00' AND ts < '2026-10-01 00:00:00'\n    GROUP BY date, campaign_id ORDER BY date, campaign_id",
+        "ch_mv": "SELECT toString(day) AS date, campaign_id,\n      sum(impressions) AS impressions, sum(clicks) AS clicks, sum(submits) AS submits, sum(closes) AS closes\n    FROM bench.campaign_daily\n    WHERE site_id = 7 AND day BETWEEN '2026-09-01' AND '2026-09-30'\n    GROUP BY date, campaign_id ORDER BY date, campaign_id",
+        "pg_raw": "SELECT to_char((ts AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS date, campaign_id,\n      count(*) FILTER (WHERE event_type = 'impression') AS impressions,\n      count(*) FILTER (WHERE event_type = 'click') AS clicks,\n      count(*) FILTER (WHERE event_type = 'submit') AS submits,\n      count(*) FILTER (WHERE event_type = 'close') AS closes\n    FROM events\n    WHERE site_id = 7 AND ts >= '2026-09-01 00:00:00+00' AND ts < '2026-10-01 00:00:00+00'\n    GROUP BY 1, 2 ORDER BY 1, 2",
+        "pg_mv": "SELECT to_char(day, 'YYYY-MM-DD') AS date, campaign_id, impressions, clicks, submits, closes\n    FROM campaign_daily\n    WHERE site_id = 7 AND day BETWEEN '2026-09-01' AND '2026-09-30'\n    ORDER BY 1, 2"
+      }
+    },
+    {
+      "id": "top-conversion",
+      "title": "Top 10 campaigns by conversion rate, all 92 days",
+      "rows_returned": 10,
+      "timings": {
+        "ch_raw": {
+          "median_ms": 66.83329999999842,
+          "min_ms": 58.86849999999686
+        },
+        "ch_mv": {
+          "median_ms": 3.895600000003469,
+          "min_ms": 3.6992000000027474
+        },
+        "pg_raw": {
+          "median_ms": 152.38790000000154,
+          "min_ms": 150.5344000000041
+        },
+        "pg_mv": {
+          "median_ms": 1.951100000005681,
+          "min_ms": 1.8607000000047265
+        }
+      },
+      "sql": {
+        "ch_raw": "SELECT campaign_id, countIf(event_type = 'impression') AS impressions, countIf(event_type = 'submit') AS submits,\n      round(submits / impressions, 6) AS conversion_rate\n    FROM bench.events FINAL\n    GROUP BY campaign_id ORDER BY conversion_rate DESC, campaign_id LIMIT 10",
+        "ch_mv": "SELECT campaign_id, sum(impressions) AS impressions, sum(submits) AS submits,\n      round(submits / impressions, 6) AS conversion_rate\n    FROM bench.campaign_daily\n    GROUP BY campaign_id ORDER BY conversion_rate DESC, campaign_id LIMIT 10",
+        "pg_raw": "SELECT campaign_id, impressions, submits, round(submits::numeric / impressions, 6) AS conversion_rate\n    FROM (SELECT campaign_id,\n            count(*) FILTER (WHERE event_type = 'impression') AS impressions,\n            count(*) FILTER (WHERE event_type = 'submit') AS submits\n          FROM events GROUP BY campaign_id) t\n    ORDER BY conversion_rate DESC, campaign_id LIMIT 10",
+        "pg_mv": "SELECT campaign_id, impressions, submits, round(submits::numeric / impressions, 6) AS conversion_rate\n    FROM (SELECT campaign_id, sum(impressions) AS impressions, sum(submits) AS submits\n          FROM campaign_daily GROUP BY campaign_id) t\n    ORDER BY conversion_rate DESC, campaign_id LIMIT 10"
+      }
+    },
+    {
+      "id": "country-device",
+      "title": "Events by country and device, last 7 days, all sites",
+      "rows_returned": 36,
+      "timings": {
+        "ch_raw": {
+          "median_ms": 8.464799999987008,
+          "min_ms": 8.144499999994878
+        },
+        "pg_raw": {
+          "median_ms": 145.41179999998712,
+          "min_ms": 140.46540000000095
+        }
+      },
+      "sql": {
+        "ch_raw": "SELECT country, toString(device) AS device, count() AS events\n    FROM bench.events FINAL\n    WHERE ts >= '2026-09-24 00:00:00' AND ts < '2026-10-01 00:00:00'\n    GROUP BY country, device ORDER BY country, device",
+        "pg_raw": "SELECT country, device::text AS device, count(*) AS events\n    FROM events\n    WHERE ts >= '2026-09-24 00:00:00+00' AND ts < '2026-10-01 00:00:00+00'\n    GROUP BY 1, 2 ORDER BY 1, 2"
+      }
+    },
+    {
+      "id": "campaign-hourly",
+      "title": "Hourly events for one campaign on one day",
+      "rows_returned": 68,
+      "timings": {
+        "ch_raw": {
+          "median_ms": 3.7082999999984168,
+          "min_ms": 3.6067000000039116
+        },
+        "pg_raw": {
+          "median_ms": 0.8611000000091735,
+          "min_ms": 0.8263000000006286
+        }
+      },
+      "sql": {
+        "ch_raw": "SELECT toHour(ts) AS hour, toString(event_type) AS event_type, count() AS events\n    FROM bench.events FINAL\n    WHERE site_id = 7 AND campaign_id = 705 AND ts >= '2026-09-15 00:00:00' AND ts < '2026-09-16 00:00:00'\n    GROUP BY hour, event_type ORDER BY hour, event_type",
+        "pg_raw": "SELECT extract(hour FROM ts AT TIME ZONE 'UTC')::int AS hour, event_type::text AS event_type, count(*) AS events\n    FROM events\n    WHERE site_id = 7 AND campaign_id = 705 AND ts >= '2026-09-15 00:00:00+00' AND ts < '2026-09-16 00:00:00+00'\n    GROUP BY 1, 2 ORDER BY 1, 2"
+      }
+    }
+  ]
+}
