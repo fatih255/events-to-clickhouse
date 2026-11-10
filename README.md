@@ -8,7 +8,7 @@ Popup analytics events go from an HTTP collector through SQS into ClickHouse, wi
 
 ## Why this exists
 
-At [Popupsmart](https://fatihinci.com/experience/#analytics) our team moved analytics from OpenSearch to ClickHouse, because of query performance and the work of running it. I worked on the schema, event ingestion, migration checks and the application's queries. This repo is a small from-scratch version of that pattern, not the production code. If I did it again I'd leave more time for running both read paths side by side, since finding out why two numbers differ can take longer than rewriting the query. So that check is built in here.
+At Popupsmart our team moved analytics from OpenSearch to ClickHouse, because of query performance and the work of running it. I was involved in the schema, event ingestion, migration checks and the application's queries. More on [my experience page](https://fatihinci.com/experience/#analytics). This repo is a small from-scratch version of that pattern, not the production code. If I did it again I'd leave more time for running both read paths side by side, since finding out why two numbers differ can take longer than rewriting the query. So that check is built in here.
 
 ## What it shows
 
